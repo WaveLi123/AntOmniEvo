@@ -2,7 +2,7 @@
 
 **An auto-evolution framework that optimizes anything — your 7×24 team of algorithm engineers.**
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE) [![arXiv](https://img.shields.io/badge/Paper-coming_soon-lightgrey.svg)](#paper)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE) [![Papers](https://img.shields.io/badge/Papers-1-b31b1b.svg)](#papers)
 
 > **English** · [中文](./README.zh-CN.md)
 
@@ -55,9 +55,9 @@ It works for any system that can be expressed as a directory of tunable files an
 | Checkpoint resume & crash recovery | [docs/checkpoint-resume.md](./docs/checkpoint-resume.md) | [docs/checkpoint-resume.zh-CN.md](./docs/checkpoint-resume.zh-CN.md) |
 | Visualizer | [docs/visualizer.md](./docs/visualizer.md) | [docs/visualizer.zh-CN.md](./docs/visualizer.zh-CN.md) |
 
-## 📄 Paper
+## 📄 Papers
 
-**Coming soon.** We will link the paper here once it is released.
+- **[Mara Chain: Rethinking Failure as a Stepping Stone for AI System Auto-Evolution](https://arxiv.org/abs/2609.35855)** — arXiv:2609.35855
 
 ## ⭐ Star History
 

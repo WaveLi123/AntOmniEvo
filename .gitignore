@@ -8,6 +8,7 @@ __pycache__/
 *.egg-info/
 .claude/
 .tmp/
+logs/
 CLAUDE.md
 task/
 .DS_Store
