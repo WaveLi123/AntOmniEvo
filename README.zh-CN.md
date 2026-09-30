@@ -60,9 +60,25 @@ AntOmniEvo 是一个面向 AI agent 系统的 auto-evolution(自动进化)框架
 | 断点续跑与崩溃恢复 | [docs/checkpoint-resume.zh-CN.md](./docs/checkpoint-resume.zh-CN.md) | [docs/checkpoint-resume.md](./docs/checkpoint-resume.md) |
 | 可视化器 | [docs/visualizer.zh-CN.md](./docs/visualizer.zh-CN.md) | [docs/visualizer.md](./docs/visualizer.md) |
 
+<a id="papers"></a>
+
 ## 📄 Papers
 
-- **[Mara Chain: Rethinking Failure as a Stepping Stone for AI System Auto-Evolution](https://arxiv.org/abs/2609.35855)** — arXiv:2609.35855
+如果这项工作对你有帮助，欢迎引用对应论文：
+
+- **[Mara Chain: Rethinking Failure as a Stepping Stone for AI System Auto-Evolution](https://arxiv.org/abs/2609.35855)**
+
+  ```bibtex
+  @misc{lyu2026marachain,
+        title={Mara Chain: Rethinking Failure as a Stepping Stone for AI System Auto-Evolution},
+        author={Yubin Lyu and Fu Li and Jiawei Fei and Yang Zhao and Weixing Mei and Yinan Wu},
+        year={2026},
+        eprint={2609.35855},
+        archivePrefix={arXiv},
+        primaryClass={cs.LG},
+        url={https://arxiv.org/abs/2609.35855},
+  }
+  ```
 
 ## ⭐ Star History
 
