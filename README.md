@@ -55,9 +55,25 @@ It works for any system that can be expressed as a directory of tunable files an
 | Checkpoint resume & crash recovery | [docs/checkpoint-resume.md](./docs/checkpoint-resume.md) | [docs/checkpoint-resume.zh-CN.md](./docs/checkpoint-resume.zh-CN.md) |
 | Visualizer | [docs/visualizer.md](./docs/visualizer.md) | [docs/visualizer.zh-CN.md](./docs/visualizer.zh-CN.md) |
 
+<a id="papers"></a>
+
 ## 📄 Papers
 
-- **[Mara Chain: Rethinking Failure as a Stepping Stone for AI System Auto-Evolution](https://arxiv.org/abs/2609.35855)** — arXiv:2609.35855
+If you find this work useful, please cite the relevant paper:
+
+- **[Mara Chain: Rethinking Failure as a Stepping Stone for AI System Auto-Evolution](https://arxiv.org/abs/2609.35855)**
+
+  ```bibtex
+  @misc{lyu2026marachain,
+        title={Mara Chain: Rethinking Failure as a Stepping Stone for AI System Auto-Evolution},
+        author={Yubin Lyu and Fu Li and Jiawei Fei and Yang Zhao and Weixing Mei and Yinan Wu},
+        year={2026},
+        eprint={2609.35855},
+        archivePrefix={arXiv},
+        primaryClass={cs.LG},
+        url={https://arxiv.org/abs/2609.35855},
+  }
+  ```
 
 ## ⭐ Star History
 
