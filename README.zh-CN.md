@@ -3,7 +3,7 @@
 **An auto-evolution framework: optimize anything — your 7×24 algorithm engineers.**
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
-[![arXiv](https://img.shields.io/badge/Paper-coming_soon-lightgrey.svg)](#paper)
+[![Papers](https://img.shields.io/badge/Papers-1-b31b1b.svg)](#papers)
 
 > [English](./README.md) · **中文**
 
@@ -60,9 +60,9 @@ AntOmniEvo 是一个面向 AI agent 系统的 auto-evolution(自动进化)框架
 | 断点续跑与崩溃恢复 | [docs/checkpoint-resume.zh-CN.md](./docs/checkpoint-resume.zh-CN.md) | [docs/checkpoint-resume.md](./docs/checkpoint-resume.md) |
 | 可视化器 | [docs/visualizer.zh-CN.md](./docs/visualizer.zh-CN.md) | [docs/visualizer.md](./docs/visualizer.md) |
 
-## 📄 Paper
+## 📄 Papers
 
-**Coming soon.** 发布后我们会把论文链接放在这里。
+- **[Mara Chain: Rethinking Failure as a Stepping Stone for AI System Auto-Evolution](https://arxiv.org/abs/2609.35855)** — arXiv:2609.35855
 
 ## ⭐ Star History
 
