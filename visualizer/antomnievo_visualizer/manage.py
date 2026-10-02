@@ -28,6 +28,9 @@ HOST = '127.0.0.1'
 # --cors-origin. Populated from the CLI (repeatable).
 CORS_ORIGINS: list[str] = []
 
+# Workspace the frontend opens on load. Set via --workspace on the CLI.
+WORKSPACE: str | None = None
+
 # Tracked subprocesses.
 processes = {}
 
@@ -94,7 +97,8 @@ def start_api(force: bool = False) -> subprocess.Popen:
     ]
     for origin in CORS_ORIGINS:
         cmd += ['--cors-origin', origin]
-
+    if WORKSPACE:
+        cmd += ['--workspace', WORKSPACE]
     proc = subprocess.Popen(cmd, env=env)
     processes['api'] = proc
     print(f"✓ Backend API server started (PID: {proc.pid})")
@@ -152,7 +156,7 @@ def status():
 
 
 def main():
-    global API_PORT, FRONTEND_PORT, HOST
+    global API_PORT, FRONTEND_PORT, HOST, WORKSPACE
     parser = argparse.ArgumentParser(description='AntOmniEvo Visualizer Manager')
     parser.add_argument('action', choices=['start', 'stop', 'restart', 'status'],
                         help='Action to perform')
@@ -174,6 +178,8 @@ def main():
                         help='Extra frontend origin the API should accept (repeatable), forwarded '
                              'to the API server. Use when the UI is reached via a hostname/address '
                              'other than --host, e.g. --cors-origin http://192.168.1.5:5173.')
+    parser.add_argument('--workspace', type=str, default=None,
+                        help='Workspace (optimization run directory) the frontend opens on load')
 
     args = parser.parse_args()
 
@@ -181,6 +187,7 @@ def main():
     FRONTEND_PORT = args.frontend_port
     HOST = args.host
     CORS_ORIGINS[:] = args.cors_origins
+    WORKSPACE = os.path.abspath(os.path.expanduser(args.workspace)) if args.workspace else None
 
     if args.action == 'start':
         print("🚀 Starting AntOmniEvo Visualizer...")
