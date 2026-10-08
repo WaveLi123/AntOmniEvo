@@ -24,6 +24,10 @@ FRONTEND_PORT = 5173
 # Bind address for both services. Override via --host on the CLI.
 HOST = '127.0.0.1'
 
+# Extra frontend origins the API should accept, forwarded to server.py via
+# --cors-origin. Populated from the CLI (repeatable).
+CORS_ORIGINS: list[str] = []
+
 # Tracked subprocesses.
 processes = {}
 
@@ -82,15 +86,16 @@ def start_api(force: bool = False) -> subprocess.Popen:
     env = os.environ.copy()
     env['PYTHONUNBUFFERED'] = '1'
 
-    proc = subprocess.Popen(
-        [
-            sys.executable, '-m', 'antomnievo_visualizer.server',
-            '--api-port', str(API_PORT),
-            '--frontend-port', str(FRONTEND_PORT),
-            '--host', HOST,
-        ],
-        env=env,
-    )
+    cmd = [
+        sys.executable, '-m', 'antomnievo_visualizer.server',
+        '--api-port', str(API_PORT),
+        '--frontend-port', str(FRONTEND_PORT),
+        '--host', HOST,
+    ]
+    for origin in CORS_ORIGINS:
+        cmd += ['--cors-origin', origin]
+
+    proc = subprocess.Popen(cmd, env=env)
     processes['api'] = proc
     print(f"✓ Backend API server started (PID: {proc.pid})")
     return proc
@@ -164,12 +169,18 @@ def main():
     parser.add_argument('--host', type=str, default=HOST,
                         help=f'Bind address for both services [default: {HOST}]. Non-loopback '
                              'hosts expose workspace files to the network.')
+    parser.add_argument('--cors-origin', action='append', default=[], dest='cors_origins',
+                        metavar='ORIGIN',
+                        help='Extra frontend origin the API should accept (repeatable), forwarded '
+                             'to the API server. Use when the UI is reached via a hostname/address '
+                             'other than --host, e.g. --cors-origin http://192.168.1.5:5173.')
 
     args = parser.parse_args()
 
     API_PORT = args.api_port
     FRONTEND_PORT = args.frontend_port
     HOST = args.host
+    CORS_ORIGINS[:] = args.cors_origins
 
     if args.action == 'start':
         print("🚀 Starting AntOmniEvo Visualizer...")

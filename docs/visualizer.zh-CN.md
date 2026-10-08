@@ -33,7 +33,7 @@ antomnievo-visualizer-manage start
 
 `Ctrl+C` 停止。把前端指向想看的 `workspace/<run>` 目录(需包含 `candidates/`)即可。
 
-两个服务默认只监听 `127.0.0.1`,API 只接受来自前端 origin 的跨域请求。API 能读取 workspace 下的任意文件,如确需从其他机器访问,可传 `--host 0.0.0.0`,但仅限可信网络。
+两个服务默认只监听 `127.0.0.1`,API 只接受来自前端 origin 的跨域请求。API 能读取 workspace 下的任意文件,如确需从其他机器访问,可传 `--host 0.0.0.0`,但仅限可信网络。绑定到非回环地址(或 `0.0.0.0`)时,该地址对应的前端 origin 会自动放行;若前端是通过 API 无法推断的主机名访问(如反向代理),可传 `--cors-origin http://<your-host>:5173`(可重复)。
 
 ## 3. 界面导览
 

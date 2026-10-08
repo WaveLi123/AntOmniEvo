@@ -33,7 +33,7 @@ antomnievo-visualizer-manage start
 
 `Ctrl+C` to stop. Point the front-end at the `workspace/<run>` directory you want to inspect.
 
-Both services bind to `127.0.0.1` by default, and the API only accepts cross-origin requests from the frontend origin. The API can read any file under the workspace, so pass `--host 0.0.0.0` only on a trusted network if you need access from another machine.
+Both services bind to `127.0.0.1` by default, and the API only accepts cross-origin requests from the frontend origin. The API can read any file under the workspace, so pass `--host 0.0.0.0` only on a trusted network if you need access from another machine. When you bind to a non-loopback address (or `0.0.0.0`), the frontend origin for that address is allowed automatically; add `--cors-origin http://<your-host>:5173` (repeatable) if the UI is reached through a hostname the API can't derive, e.g. a reverse proxy.
 
 ## 3. UI tour
 
