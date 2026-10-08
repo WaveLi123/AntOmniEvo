@@ -9,8 +9,10 @@ import argparse
 import contextlib
 import os
 import signal
+import socket
 import subprocess
 import threading
+from urllib.parse import urlsplit
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -25,7 +27,22 @@ from antomnievo_visualizer.workspace_reader import (
 )
 
 app = Flask(__name__)
-CORS(app)
+
+LOOPBACK_HOSTS = {'127.0.0.1', 'localhost', '::1'}
+
+# Bind addresses that listen on every interface. When the user binds one of
+# these we cannot know which address the browser will use, so the allowed
+# frontend origins additionally include this machine's LAN addresses.
+WILDCARD_HOSTS = {'0.0.0.0', '::', ''}
+
+# Host names accepted in the Host header, or None to accept any. Set in main()
+# when bound to loopback, so a DNS-rebinding page cannot reach the API under
+# its own domain name.
+ALLOWED_HOSTS: set[str] | None = None
+
+# Frontend origins allowed to make cross-origin requests (CORS) and to drive
+# state-changing (POST) endpoints. Set in main() by configure_security().
+ALLOWED_ORIGINS: set[str] = set()
 
 # Workspace root path. Set via --workspace flag or POST /api/config/workspace.
 # All endpoints read from this single global root — clients cannot specify a
@@ -35,6 +52,109 @@ WORKSPACE_ROOT: str | None = None
 # Frontend dev server port. Used by the /api/admin/stop endpoint to also
 # tear down the Vite process. Overridable via --frontend-port.
 FRONTEND_PORT: int = 5173
+
+
+def _local_network_hosts() -> set[str]:
+    """Best-effort set of this machine's non-loopback IPv4 addresses.
+
+    Only consulted when bound to a wildcard address (0.0.0.0 / ::), where the
+    browser reaches the UI via a LAN IP that cannot be derived from the bind
+    host alone.
+    """
+    hosts: set[str] = set()
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            hosts.add(info[4][0])
+    except OSError:
+        pass
+    # A UDP "connect" sends no packets; it just resolves the outbound interface.
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(('8.8.8.8', 80))
+            hosts.add(sock.getsockname()[0])
+    except OSError:
+        pass
+    return {h for h in hosts if h and not h.startswith('127.')}
+
+
+def _allowed_origins(bind_host: str, frontend_port: int,
+                     extra_origins: list[str] | tuple[str, ...]) -> list[str]:
+    """Compute the frontend origins the API may be called from cross-origin.
+
+    The local frontend origins are always allowed. When the API is bound to a
+    non-loopback address the UI is typically opened via that address (or, for a
+    wildcard bind, via one of the machine's LAN IPs), so those origins are
+    added too — otherwise the browser blocks every API call even though the
+    user opted in to network access with --host.
+    """
+    origins = {
+        f'http://localhost:{frontend_port}',
+        f'http://127.0.0.1:{frontend_port}',
+        f'http://[::1]:{frontend_port}',
+    }
+    if bind_host not in LOOPBACK_HOSTS:
+        if bind_host not in WILDCARD_HOSTS:
+            origins.add(f'http://{bind_host}:{frontend_port}')
+        else:
+            for host in _local_network_hosts():
+                origins.add(f'http://{host}:{frontend_port}')
+    origins.update(extra_origins)
+    return sorted(origins)
+
+
+def configure_security(bind_host: str, frontend_port: int,
+                       extra_origins: list[str] | tuple[str, ...] = ()) -> None:
+    """Restrict CORS to the frontend origin(s) and, on loopback binds, the Host header.
+
+    The API can read any file under the configured workspace root, so other
+    origins (any page open in the user's browser) must not be able to call it.
+    `extra_origins` lets the operator whitelist additional frontend origins,
+    e.g. when the UI is reached through a reverse proxy or a custom hostname.
+    """
+    global ALLOWED_HOSTS, ALLOWED_ORIGINS
+    ALLOWED_ORIGINS = set(_allowed_origins(bind_host, frontend_port, extra_origins))
+    CORS(app, origins=sorted(ALLOWED_ORIGINS))
+    ALLOWED_HOSTS = LOOPBACK_HOSTS if bind_host in LOOPBACK_HOSTS else None
+
+
+@app.before_request
+def check_host_header():
+    if ALLOWED_HOSTS is None:
+        return None
+    host = request.host
+    name = host[1:host.index(']')] if host.startswith('[') else host.split(':')[0]
+    if name not in ALLOWED_HOSTS:
+        return jsonify({'error': f'Host not allowed: {host}'}), 403
+    return None
+
+
+@app.before_request
+def check_csrf_origin():
+    """Reject cross-site state-changing requests (CSRF).
+
+    CORS stops a foreign page from *reading* a response, but a cross-origin
+    POST still reaches the server and runs its side effects (e.g. stopping the
+    services via /api/admin/stop or repointing the workspace). Browsers attach
+    an Origin header to cross-origin POSTs, so require it to be one of the
+    allowed frontend origins. Requests without an Origin/Referer header (curl,
+    scripts, the test client) are not browser CSRF vectors and are allowed.
+    """
+    if request.method in ('GET', 'HEAD', 'OPTIONS'):
+        return None
+    origin = request.headers.get('Origin')
+    if not origin:
+        referer = request.headers.get('Referer')
+        if referer:
+            parts = urlsplit(referer)
+            origin = f'{parts.scheme}://{parts.netloc}'
+    if origin and origin not in ALLOWED_ORIGINS:
+        return jsonify({'error': f'Origin not allowed: {origin}'}), 403
+    return None
+
+
+def is_workspace_dir(path: str) -> bool:
+    """A workspace root is an optimization run directory, i.e. one with candidates/."""
+    return os.path.isdir(os.path.join(path, 'candidates'))
 
 
 def get_workspace_root() -> str:
@@ -80,6 +200,8 @@ def set_workspace_config():
         return jsonify({'error': f'path must be absolute: {path}'}), 400
     if not os.path.isdir(path):
         return jsonify({'error': f'path does not exist or is not a directory: {path}'}), 400
+    if not is_workspace_dir(path):
+        return jsonify({'error': f'not an optimization workspace (no candidates/ directory): {path}'}), 400
 
     WORKSPACE_ROOT = path
     print(f"[config] WORKSPACE_ROOT set to: {path}")
@@ -250,7 +372,8 @@ def open_directory():
 
     target = os.path.join(workspace_path, 'candidates', candidate_id)
     target = os.path.realpath(target)
-    if not target.startswith(os.path.realpath(workspace_path)):
+    candidates_root = os.path.realpath(os.path.join(workspace_path, 'candidates'))
+    if os.path.commonpath([candidates_root, target]) != candidates_root:
         return jsonify({'error': 'path traversal rejected'}), 403
     if not os.path.isdir(target):
         return jsonify({'error': f'Directory not found: {target}'}), 404
@@ -276,7 +399,7 @@ def _kill_port(port: int) -> list[str]:
     """SIGKILL every process listening on `port`; return the killed PIDs."""
     try:
         result = subprocess.run(
-            ['lsof', '-ti', str(port)],
+            ['lsof', '-ti', f'tcp:{port}', '-sTCP:LISTEN'],
             capture_output=True,
             text=True,
             check=False,
@@ -328,7 +451,15 @@ def main():
                         help='Backend (this API server) port [default: 3001]')
     parser.add_argument('--frontend-port', type=int, default=FRONTEND_PORT,
                         help='Frontend dev server port (used by /api/admin/stop) [default: 5173]')
-    parser.add_argument('--host', type=str, default='0.0.0.0', help='Host to bind to')
+    parser.add_argument('--host', type=str, default='127.0.0.1',
+                        help='Host to bind to [default: 127.0.0.1]. Non-loopback hosts expose '
+                             'workspace files to the network.')
+    parser.add_argument('--cors-origin', action='append', default=[], dest='cors_origins',
+                        metavar='ORIGIN',
+                        help='Extra frontend origin to allow cross-origin requests from, e.g. '
+                             'http://192.168.1.5:5173. Repeatable. Add one when the UI is reached '
+                             'via a hostname/address that is not the bind address (reverse proxy, '
+                             'custom DNS), otherwise the browser will block its API calls.')
     parser.add_argument('--workspace', type=str, default=None,
                         help='Workspace root path')
     args = parser.parse_args()
@@ -339,11 +470,15 @@ def main():
             workspace = os.path.abspath(workspace)
         if not os.path.isdir(workspace):
             parser.error(f'--workspace path does not exist or is not a directory: {workspace}')
+        if not is_workspace_dir(workspace):
+            parser.error(f'--workspace is not an optimization workspace (no candidates/ directory): {workspace}')
         WORKSPACE_ROOT = workspace
     FRONTEND_PORT = args.frontend_port
+    configure_security(args.host, FRONTEND_PORT, args.cors_origins)
 
     print(f"Backend  (API): http://{args.host}:{args.api_port}")
     print(f"Frontend (dev): port {FRONTEND_PORT}  (killed by /api/admin/stop)")
+    print(f"Allowed CORS origins: {', '.join(sorted(ALLOWED_ORIGINS))}")
     print(f"Workspace root: {WORKSPACE_ROOT or '(not set — provide via POST /api/config/workspace)'}")
     app.run(host=args.host, port=args.api_port, debug=False)
 
