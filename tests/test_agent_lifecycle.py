@@ -20,8 +20,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from antomnievo.common.utils import subprocess_utils
 from antomnievo.common.utils.errors import AgentTimeoutError, is_retryable_agent_error
-from antomnievo.common.utils.subprocess_utils import communicate_with_timeout
+from antomnievo.common.utils.subprocess_utils import communicate_with_timeout, kill_process_tree
 from antomnievo.common.utils.trajectory_parser import _collect_agent_errors, parse_stream_json
 from antomnievo.interface.evaluator import Evaluator
 from antomnievo.model.trajectory import Span, Trajectory
@@ -36,15 +37,20 @@ from antomnievo.proposer.utils.pi_coding_agent_utils import (
 from antomnievo.store.candidate_store import LocalCandidateStore
 
 # A stand-in agent: spawns a child, records both pids, then hangs. Any CLI
-# flags the backends pass are ignored.
+# flags the backends pass are ignored. The child's stdio is redirected so it
+# does not inherit the parent's pipes — otherwise proc.wait() would block until
+# the child exits, masking a failed tree-kill.
 _FAKE_AGENT = """#!/bin/sh
 echo "$$" > "$AGENT_PIDFILE"
-sleep 60 &
+sleep 60 >/dev/null 2>&1 &
 echo "$!" >> "$AGENT_PIDFILE"
+touch "$AGENT_READY"
 wait
 """
 
-_TIMEOUT_S = 1.0
+# Timeout for the stub-based timeout tests — any small positive value works:
+# the stub's communicate() never returns, so the timeout always fires.
+_TIMEOUT_S = 0.05
 
 
 @pytest.fixture
@@ -53,8 +59,10 @@ def fake_agent(tmp_path, monkeypatch):
     script.write_text(_FAKE_AGENT)
     script.chmod(script.stat().st_mode | stat.S_IXUSR)
     pidfile = tmp_path / "pids"
+    ready = tmp_path / "ready"
     monkeypatch.setenv("AGENT_PIDFILE", str(pidfile))
-    return str(script), pidfile
+    monkeypatch.setenv("AGENT_READY", str(ready))
+    return str(script), pidfile, ready
 
 
 def _is_alive(pid: int) -> bool:
@@ -70,33 +78,98 @@ def _is_alive(pid: int) -> bool:
         return True
 
 
+async def _wait_until_ready(ready, proc, deadline_s: float = 5.0) -> None:
+    """Block until the fake agent signals it has spawned its child.
+
+    Gating the timed call on this keeps cold-start latency out of the timeout
+    window: otherwise a slow fork/exec (loaded CI) can burn the whole budget
+    during setup, and the agent is killed before it records any pid.
+    """
+    deadline = time.monotonic() + deadline_s
+    while not ready.exists():
+        if proc.returncode is not None:
+            raise AssertionError("fake agent exited before spawning its child")
+        if time.monotonic() > deadline:
+            raise AssertionError("fake agent never became ready")
+        await asyncio.sleep(0.02)
+
+
 def _assert_all_dead(pidfile, timeout_s: float = 3.0) -> None:
-    # Own pid first, then the child's; on a slow cold start the agent may have
-    # been killed before it spawned the child, which is fine for this check.
+    # The agent records its own pid, then the child's; require both so the
+    # tree-kill (not just killing the agent) is actually exercised.
+    assert pidfile.exists(), "fake agent never recorded its pids (setup raced the timeout)"
     pids = [int(p) for p in pidfile.read_text().split()]
-    assert pids, "fake agent never started"
-    deadline = time.time() + timeout_s
-    while time.time() < deadline:
-        if not any(_is_alive(p) for p in pids):
-            return
+    assert len(pids) == 2, f"expected agent + child pids, got {pids}"
+    deadline = time.monotonic() + timeout_s
+    while any(_is_alive(p) for p in pids):
+        if time.monotonic() > deadline:
+            alive = [p for p in pids if _is_alive(p)]
+            for p in alive:  # don't leak processes out of the test run
+                os.kill(p, 9)
+            raise AssertionError(f"processes still alive after timeout kill: {alive}")
         time.sleep(0.05)
-    alive = [p for p in pids if _is_alive(p)]
-    for p in alive:  # don't leak processes out of the test run
-        os.kill(p, 9)
-    raise AssertionError(f"processes still alive after timeout kill: {alive}")
+
+
+class _StubProcess:
+    """A stand-in for an asyncio subprocess whose communicate() never finishes.
+
+    Used to test the *timeout* path without spawning anything: no real
+    fork/exec means no cold-start latency racing the timeout. The pid is chosen
+    above any real pid_max so ``kill_process_tree`` finds no descendants.
+    """
+
+    def __init__(self, pid: int = 2**31 - 1):
+        self.pid = pid
+        self.returncode = None
+
+    async def communicate(self) -> tuple[bytes, bytes]:
+        await asyncio.Event().wait()          # never returns
+        raise AssertionError("unreachable")
+
+    async def wait(self) -> int:
+        self.returncode = -9
+        return -9
+
+    def kill(self) -> None:
+        self.returncode = -9
+
+
+@pytest.fixture
+def stub_subprocess(monkeypatch):
+    """Make ``asyncio.create_subprocess_exec`` return a never-finishing stub."""
+    stub = _StubProcess()
+
+    async def fake_exec(*_args, **_kwargs):
+        return stub
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    return stub
 
 
 class TestTimeoutKillsProcessTree:
-    def test_helper_kills_agent_and_children(self, fake_agent):
-        script, pidfile = fake_agent
+    def test_timeout_kills_the_tree_and_raises(self, monkeypatch):
+        """On timeout the helper kills the process tree and raises AgentTimeoutError."""
+        proc = _StubProcess()
+        killed = []
+        monkeypatch.setattr(subprocess_utils, "kill_process_tree", killed.append)
+
+        with pytest.raises(AgentTimeoutError):
+            asyncio.run(communicate_with_timeout(proc, _TIMEOUT_S, "stub"))
+
+        assert killed == [proc]
+
+    @pytest.mark.slow
+    def test_kill_process_tree_kills_children(self, fake_agent):
+        """Real processes, no timeout: the killer itself is exercised end to end."""
+        script, pidfile, ready = fake_agent
 
         async def run():
             proc = await asyncio.create_subprocess_exec(
                 script, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             )
-            with pytest.raises(AgentTimeoutError):
-                await communicate_with_timeout(proc, _TIMEOUT_S, "fake agent")
-            assert proc.returncode is not None  # reaped, not left as a zombie
+            await _wait_until_ready(ready, proc)
+            kill_process_tree(proc)
+            await proc.wait()
 
         asyncio.run(run())
         _assert_all_dead(pidfile)
@@ -113,19 +186,15 @@ class TestTimeoutKillsProcessTree:
         assert out.strip() == b"out"
         assert err.strip() == b"err"
 
-    def test_invoke_claude_code_timeout_kills_agent(self, fake_agent, tmp_path):
-        script, pidfile = fake_agent
-        config = ClaudeCodeConfig(claude_code_path=script, timeout=_TIMEOUT_S)
+    def test_invoke_claude_code_times_out(self, stub_subprocess, tmp_path):
+        config = ClaudeCodeConfig(claude_code_path="claude", timeout=_TIMEOUT_S)
         with pytest.raises(AgentTimeoutError):
             asyncio.run(invoke_claude_code("prompt", str(tmp_path), config))
-        _assert_all_dead(pidfile)
 
-    def test_invoke_pi_timeout_kills_agent(self, fake_agent, tmp_path):
-        script, pidfile = fake_agent
-        config = PiCodingAgentConfig(pi_path=script, timeout=_TIMEOUT_S)
+    def test_invoke_pi_times_out(self, stub_subprocess, tmp_path):
+        config = PiCodingAgentConfig(pi_path="pi", timeout=_TIMEOUT_S)
         with pytest.raises(AgentTimeoutError):
             asyncio.run(invoke_pi_coding_agent("prompt", str(tmp_path), config))
-        _assert_all_dead(pidfile)
 
     def test_timeout_is_not_retried_by_pi_policy(self):
         """A hung session is not a transient gateway error — retrying it would
