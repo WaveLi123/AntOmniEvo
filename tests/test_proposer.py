@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from antomnievo.common.utils.fs_utils import get_latest_mtime
+from antomnievo.common.utils.fs_utils import get_latest_mtime, is_noise, snapshot_files
 from antomnievo.common.utils.trajectory_parser import parse_stream_json
 from antomnievo.interface.candidate_store import CandidateStore
 from antomnievo.interface.evaluator import Evaluator
@@ -685,7 +685,46 @@ class TestMutationChangeDetection:
         result = self._run_mutation(proposer, store, edit)
         assert result.success
 
+    def test_add_only_edit_counts_as_change(self, proposer, store):
+        def edit(cwd):
+            with open(os.path.join(cwd, "new_rule.md"), "w") as f:
+                f.write("added")
+
+        result = self._run_mutation(proposer, store, edit)
+        assert result.success
+
     def test_no_edit_fails(self, proposer, store):
         result = self._run_mutation(proposer, store, lambda cwd: None)
         assert not result.success
         assert "No tunable-artifact files were modified" in result.error_message
+
+    def test_noise_only_edit_does_not_count(self, proposer, store):
+        """Importing the artifacts (which writes __pycache__) is not a mutation."""
+
+        def edit(cwd):
+            pycache = os.path.join(cwd, "__pycache__")
+            os.makedirs(pycache, exist_ok=True)
+            with open(os.path.join(pycache, "mod.cpython-312.pyc"), "wb") as f:
+                f.write(b"\x00\x01")
+
+        result = self._run_mutation(proposer, store, edit)
+        assert not result.success
+        assert "No tunable-artifact files were modified" in result.error_message
+
+
+class TestSnapshotFiles:
+    def test_is_noise_flags_hidden_and_pycache(self):
+        assert is_noise(".DS_Store")
+        assert is_noise(".git")
+        assert is_noise("__pycache__")
+        assert not is_noise("SKILL.md")
+        assert not is_noise("rules")
+
+    def test_skips_editor_and_interpreter_noise(self, tmp_path):
+        (tmp_path / "keep.md").write_text("x")
+        (tmp_path / ".hidden").write_text("x")
+        pycache = tmp_path / "__pycache__"
+        pycache.mkdir()
+        (pycache / "mod.pyc").write_bytes(b"\x00")
+
+        assert set(snapshot_files(str(tmp_path))) == {"keep.md"}
