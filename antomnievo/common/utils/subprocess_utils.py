@@ -7,13 +7,11 @@ import os
 import signal
 import subprocess
 
+from antomnievo.common.utils.errors import AgentTimeoutError
+
 logger = logging.getLogger(__name__)
 
 _REAP_GRACE_SECONDS = 5.0
-
-
-class AgentTimeoutError(asyncio.TimeoutError):
-    """An agent subprocess exceeded its timeout and was killed."""
 
 
 def _descendant_pids(pid: int) -> list[int]:

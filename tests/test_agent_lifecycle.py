@@ -20,10 +20,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from antomnievo.common.utils.subprocess_utils import (
-    AgentTimeoutError,
-    communicate_with_timeout,
-)
+from antomnievo.common.utils.errors import AgentTimeoutError, is_retryable_agent_error
+from antomnievo.common.utils.subprocess_utils import communicate_with_timeout
 from antomnievo.common.utils.trajectory_parser import _collect_agent_errors, parse_stream_json
 from antomnievo.interface.evaluator import Evaluator
 from antomnievo.model.trajectory import Span, Trajectory
@@ -34,7 +32,6 @@ from antomnievo.proposer.utils.claude_code_utils import ClaudeCodeConfig, invoke
 from antomnievo.proposer.utils.pi_coding_agent_utils import (
     PiCodingAgentConfig,
     invoke_pi_coding_agent,
-    is_retryable_pi_exception,
 )
 from antomnievo.store.candidate_store import LocalCandidateStore
 
@@ -135,7 +132,7 @@ class TestTimeoutKillsProcessTree:
         multiply an already hour-long wait."""
         exc = AgentTimeoutError("Pi Coding Agent timed out after 3600s")
         assert isinstance(exc, asyncio.TimeoutError)
-        assert not is_retryable_pi_exception(exc)
+        assert not is_retryable_agent_error(exc)
 
 
 def _claude_events(result_event: dict) -> str:
