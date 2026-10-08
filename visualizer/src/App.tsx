@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import Dashboard from './pages/Dashboard';
-import { browseDirectory, type BrowseResult } from './utils/api';
+import { browseDirectory, getWorkspaceConfig, type BrowseResult } from './utils/api';
 
 function DirectoryBrowser({
   onSelect,
@@ -109,17 +109,42 @@ function App() {
   const [isEditing, setIsEditing] = useState(false);
   const [showBrowser, setShowBrowser] = useState(false);
 
-  // Read workspace from URL params. No default path: a hardcoded one would be
-  // wrong for anyone else (and stale for us) — ask the user instead.
+  // Resolve the workspace to open. A workspace passed to the server at startup
+  // (`--workspace`) wins; otherwise the URL param; otherwise ask the user. No
+  // hardcoded default: it would be wrong for anyone else (and stale for us).
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const ws = params.get('workspace');
-    if (ws) {
-      setWorkspacePath(ws);
-      setInputValue(ws);
-    } else {
-      setIsEditing(true);
-    }
+    const fromUrl = new URLSearchParams(window.location.search).get('workspace');
+    let cancelled = false;
+
+    const openFromUrl = () => {
+      if (fromUrl) {
+        setWorkspacePath(fromUrl);
+        setInputValue(fromUrl);
+      } else {
+        setIsEditing(true);
+      }
+    };
+
+    getWorkspaceConfig()
+      .then(({ workspace_root, exists }) => {
+        if (cancelled) return;
+        if (workspace_root && exists) {
+          setWorkspacePath(workspace_root);
+          setInputValue(workspace_root);
+          const url = new URL(window.location.href);
+          url.searchParams.set('workspace', workspace_root);
+          window.history.replaceState({}, '', url);
+        } else {
+          openFromUrl();
+        }
+      })
+      .catch(() => {
+        if (!cancelled) openFromUrl();
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const applyWorkspace = (path: string) => {

@@ -13,6 +13,8 @@ import os
 from antomnievo.interface.candidate_store import CandidateStore
 from antomnievo.store.candidate_store import LocalCandidateStore
 
+from antomnievo_visualizer.workspace_paths import is_workspace_dir
+
 
 def _read_run_score(file_path: str) -> float | None:
     """Extract evaluation_result.score from a run JSON file."""
@@ -94,7 +96,7 @@ def open_store(workspace_path: str) -> CandidateStore | None:
     """
     if not os.path.isdir(workspace_path):
         return None
-    if not os.path.isdir(os.path.join(workspace_path, 'candidates')):
+    if not is_workspace_dir(workspace_path):
         return None
     return LocalCandidateStore(workspace_path, cleanup_unavailable=False)
 

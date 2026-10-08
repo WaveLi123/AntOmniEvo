@@ -31,7 +31,13 @@ antomnievo-visualizer-manage start
 - 前端:http://localhost:5173
 - API:http://localhost:3001
 
-`Ctrl+C` 停止。把前端指向想看的 `workspace/<run>` 目录(需包含 `candidates/`)即可。
+`Ctrl+C` 停止。把前端指向想看的 `workspace/<run>` 目录即可;也可以启动时直接指定,打开页面会自动加载:
+
+```bash
+antomnievo-visualizer-manage start --workspace /path/to/workspace/<run>
+```
+
+启动时指定的 workspace 优先于 URL 里的 `?workspace=` 参数;未指定时依次回退到 URL 参数、目录选择器。
 
 两个服务默认只监听 `127.0.0.1`,API 只接受来自前端 origin 的跨域请求。API 能读取 workspace 下的任意文件,如确需从其他机器访问,可传 `--host 0.0.0.0`,但仅限可信网络。绑定到非回环地址(或 `0.0.0.0`)时,该地址对应的前端 origin 会自动放行;若前端是通过 API 无法推断的主机名访问(如反向代理),可传 `--cors-origin http://<your-host>:5173`(可重复)。
 
