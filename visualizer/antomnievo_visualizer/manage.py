@@ -13,6 +13,8 @@ import sys
 import time
 from pathlib import Path
 
+from antomnievo_visualizer.workspace_paths import resolve_workspace
+
 # Project root = visualizer/ (one level up from this package).
 PROJECT_ROOT = Path(__file__).parent.parent
 FRONTEND_DIR = PROJECT_ROOT
@@ -179,7 +181,8 @@ def main():
                              'to the API server. Use when the UI is reached via a hostname/address '
                              'other than --host, e.g. --cors-origin http://192.168.1.5:5173.')
     parser.add_argument('--workspace', type=str, default=None,
-                        help='Workspace (optimization run directory) the frontend opens on load')
+                        help='Optimization run directory to open on load; takes precedence over '
+                             'the ?workspace= URL parameter')
 
     args = parser.parse_args()
 
@@ -187,7 +190,12 @@ def main():
     FRONTEND_PORT = args.frontend_port
     HOST = args.host
     CORS_ORIGINS[:] = args.cors_origins
-    WORKSPACE = os.path.abspath(os.path.expanduser(args.workspace)) if args.workspace else None
+    WORKSPACE = None
+    if args.workspace:
+        try:
+            WORKSPACE = resolve_workspace(args.workspace)
+        except ValueError as e:
+            parser.error(f'--workspace {e}')
 
     if args.action == 'start':
         print("🚀 Starting AntOmniEvo Visualizer...")

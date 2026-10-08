@@ -37,6 +37,8 @@ antomnievo-visualizer-manage start
 antomnievo-visualizer-manage start --workspace /path/to/workspace/<run>
 ```
 
+A workspace passed at startup takes precedence over a `?workspace=` URL parameter; without one, the page falls back to the URL parameter, then to the directory picker.
+
 Both services bind to `127.0.0.1` by default, and the API only accepts cross-origin requests from the frontend origin. The API can read any file under the workspace, so pass `--host 0.0.0.0` only on a trusted network if you need access from another machine. When you bind to a non-loopback address (or `0.0.0.0`), the frontend origin for that address is allowed automatically; add `--cors-origin http://<your-host>:5173` (repeatable) if the UI is reached through a hostname the API can't derive, e.g. a reverse proxy.
 
 ## 3. UI tour

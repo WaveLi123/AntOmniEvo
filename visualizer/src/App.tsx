@@ -109,18 +109,22 @@ function App() {
   const [isEditing, setIsEditing] = useState(false);
   const [showBrowser, setShowBrowser] = useState(false);
 
-  // Read workspace from URL params, falling back to the backend's configured
-  // root (`--workspace`). No hardcoded default: it would be wrong for anyone
-  // else (and stale for us) — ask the user instead.
+  // Resolve the workspace to open. A workspace passed to the server at startup
+  // (`--workspace`) wins; otherwise the URL param; otherwise ask the user. No
+  // hardcoded default: it would be wrong for anyone else (and stale for us).
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const ws = params.get('workspace');
-    if (ws) {
-      setWorkspacePath(ws);
-      setInputValue(ws);
-      return;
-    }
+    const fromUrl = new URLSearchParams(window.location.search).get('workspace');
     let cancelled = false;
+
+    const openFromUrl = () => {
+      if (fromUrl) {
+        setWorkspacePath(fromUrl);
+        setInputValue(fromUrl);
+      } else {
+        setIsEditing(true);
+      }
+    };
+
     getWorkspaceConfig()
       .then(({ workspace_root, exists }) => {
         if (cancelled) return;
@@ -131,12 +135,13 @@ function App() {
           url.searchParams.set('workspace', workspace_root);
           window.history.replaceState({}, '', url);
         } else {
-          setIsEditing(true);
+          openFromUrl();
         }
       })
       .catch(() => {
-        if (!cancelled) setIsEditing(true);
+        if (!cancelled) openFromUrl();
       });
+
     return () => {
       cancelled = true;
     };

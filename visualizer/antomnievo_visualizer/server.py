@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
+from antomnievo_visualizer.workspace_paths import is_workspace_dir, resolve_workspace
 from antomnievo_visualizer.workspace_reader import (
     candidate_detail_payload,
     candidates_payload,
@@ -150,11 +151,6 @@ def check_csrf_origin():
     if origin and origin not in ALLOWED_ORIGINS:
         return jsonify({'error': f'Origin not allowed: {origin}'}), 403
     return None
-
-
-def is_workspace_dir(path: str) -> bool:
-    """A workspace root is an optimization run directory, i.e. one with candidates/."""
-    return os.path.isdir(os.path.join(path, 'candidates'))
 
 
 def get_workspace_root() -> str:
@@ -461,18 +457,14 @@ def main():
                              'via a hostname/address that is not the bind address (reverse proxy, '
                              'custom DNS), otherwise the browser will block its API calls.')
     parser.add_argument('--workspace', type=str, default=None,
-                        help='Workspace root path')
+                        help='Optimization run directory to serve')
     args = parser.parse_args()
 
     if args.workspace:
-        workspace = os.path.expanduser(args.workspace)
-        if not os.path.isabs(workspace):
-            workspace = os.path.abspath(workspace)
-        if not os.path.isdir(workspace):
-            parser.error(f'--workspace path does not exist or is not a directory: {workspace}')
-        if not is_workspace_dir(workspace):
-            parser.error(f'--workspace is not an optimization workspace (no candidates/ directory): {workspace}')
-        WORKSPACE_ROOT = workspace
+        try:
+            WORKSPACE_ROOT = resolve_workspace(args.workspace)
+        except ValueError as e:
+            parser.error(f'--workspace {e}')
     FRONTEND_PORT = args.frontend_port
     configure_security(args.host, FRONTEND_PORT, args.cors_origins)
 
